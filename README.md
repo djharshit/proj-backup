@@ -1,2 +1,4 @@
-# proj-backup
-Project backup repo in case of data loss
+# Project Backup Repo
+
+### Temporary data
+Project backup repo (in case of data loss)
