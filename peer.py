@@ -1,14 +1,4 @@
-"""Peer program
-
-Attributes:
-    conn_d (dict): Description
-    frmt (str): Description
-    is_trck (bool): Description
-    msg (TYPE): Description
-    mys (TYPE): Description
-    s_port (TYPE): Description
-    srvr_thrd (TYPE): Description
-"""
+"""Peer program."""
 
 
 import socket
@@ -18,17 +8,12 @@ import hashlib
 
 
 class MyServer:
-    """Our peer server
+    """Our peer server.
 
-    This class has three functions:
-        1. Accept connections from peer client
-        2. Receive msg from the peer client
-        3. Send file to the peer client
-
-    This class perform three task:
+    This class perform three tasks:
         1. Accept connections from other peers
-        2. Receive msg from the peer
-        3. Send file to the peer
+        2. Receive messages from peers
+        3. Send the file in chunks to the peer
 
     Attributes:
         srvr : Server socket object
@@ -36,6 +21,11 @@ class MyServer:
     """
 
     def __init__(self, port: int):
+        """Init method of MyServer class.
+
+        Args:
+            port (int): Description
+        """
         self.host = '127.0.0.1'
         self.port = port
 
@@ -44,9 +34,8 @@ class MyServer:
         self.srvr.listen(5)
         print('[+] Peer started on', self.port)
 
-    def accept_conn(self) -> None:
-        """Accept clients connections request
-        """
+    def accept_conn(self):
+        """Accept clients connections request."""
         while True:
             conn, addr = self.srvr.accept()
 
@@ -56,12 +45,12 @@ class MyServer:
             s = threading.Thread(target=self.receive_msg, args=[conn, p2p_srvr_port])
             s.start()
 
-    def receive_msg(self, conn, addr) -> bytes:
-        """Receiving messages from other peers.
+    def receive_msg(self, conn, addr) -> str:
+        """Receive messages from the other peers.
 
         Args:
             conn : Socket connection object
-            addr :
+            addr : Peer port
         """
         while True:
             msg = conn.recv(1024).decode()
@@ -71,10 +60,11 @@ class MyServer:
                 self.send_file(conn, msg.split()[1])
 
     def send_file(self, conn, fname):
-        """Send the file to the peer
+        """Send the file in chunks to the peer.
 
         Args:
-            fname (str): Name of the the file
+            conn : Connection object
+            fname (str): Name of the file
         """
         fileop = FileOp(fname)
 
@@ -83,9 +73,9 @@ class MyServer:
         if file_lst:
             conn.send(b'OK')
 
-            for i in range(len(file_lst)):
-                print('Send', i+1)
-                conn.send(file_lst[i])
+            for i, j in enumerate(file_lst):
+                print('Send', i + 1)
+                conn.send(j)
 
             print('All send')
 
@@ -96,24 +86,25 @@ class MyServer:
 
 
 class MyClient:
-    """Client class: handling clients objects
+    """Client class: handling clients objects.
 
-    This class has three functions:
-        1. Connect to the tracker and peer servers with provided port
-        2. Send msg to the servers
-        3. Receive msg from servers
-
-    This class perform three tasks:
-        1. Send msg to and receive msg from tracker
-        2. Send msg to the peer
-        3. Receive file from the peer
+    This class perform four tasks:
+        1. Try to connect to the server
+        2. Send messages to and receive messages from tracker
+        3. Send messages to the peer
+        4. Receive file in chunks from the peer
 
     Attributes:
-        clnt : Client object
+        clnt : Client socket object
         port (int): Server port number
     """
 
     def __init__(self, port):
+        """Init method of MyClient class.
+
+        Args:
+            port (TYPE): Description
+        """
         self.clnt = socket.socket()
         self.port = port
         self.host = '127.0.0.1'
@@ -135,7 +126,7 @@ class MyClient:
         """Send the message (bytes) to the server.
 
         Args:
-            bin_msg (bytes): Message in bytes object
+            bin_msg (bytes): Message in bytes
         """
         self.clnt.send(bin_msg)
 
@@ -146,18 +137,35 @@ class MyClient:
             size (int): Buffer size of receiving message
 
         Returns:
-            bytes object
+            bytes: Message in bytes
         """
         return self.clnt.recv(size)
 
 
 class FileOp:
+    """Class for handling all file related operations.
+
+    This class perform three tasks:
+        1. Make file detail in specific format and send it to MyServer class
+        2. Send the file to the peer in chunks
+        3. Receive the file from the peer
+
+    Attributes:
+        fname (str): Name of the file
+        size : 512 kb
+    """
+
     def __init__(self, fname):
+        """Init method of FileOp class.
+
+        Args:
+            fname (TYPE): Description
+        """
         self.fname = fname
         self.size = 512 * 1024   # 512 kb
 
     def file_size(self) -> int:
-        """Calculate the size of the file
+        """Calculate the size of the file.
 
         Returns:
             int: Size of file in bytes
@@ -166,12 +174,10 @@ class FileOp:
             return len(f.read())
 
     def send_file_detail(self) -> dict:
-        """Send the file detail provided by peer to tracker in the
-        specified format.
+        """Send the file detail provided by peer to tracker in the specified format.
 
         Returns:
             dict : Dictionary of file block in specified format
-
         """
         file_block = {}
         no_blocks = 0
@@ -202,10 +208,10 @@ class FileOp:
         return file_block
 
     def send_file(self) -> list:
-        """Divide the file in specified parts.
+        """Divide the file in specified size (chunks).
 
         Returns:
-            list : List of file parts in bytes
+            list : List of file data (chunks) in bytes
         """
         file_parts = []
 
@@ -225,19 +231,24 @@ class FileOp:
             return file_parts
 
     def file_receive(self, data: bytes):
-        """Recieve the file in parts and append it to the new created file
+        """Recieve the file in chunks and append it to the new created file.
 
         Args:
-            data (bytes): Description
+            data (bytes): A file chunk in bytes
         """
         r = 1
         with open(f'./receive/{self.fname}', 'ab+') as f:
             b = f.write(data)
-            print('Received', r , 'size', b)
+            print('Received', r, 'size', b)
+            r += 1
 
 
-# Tracker client object
 def tracker():
+    """Handling tracker client object.
+
+    Returns:
+        bool: True is tracker is running, otherwise False
+    """
     global trck_clnt
 
     t_port = 3030   # int(input('Enter tracker port:'))
@@ -246,14 +257,16 @@ def tracker():
     if trck_clnt.server_connect():
         print('[+] Connected to', t_port)
         trck_clnt.send_msg(str(s_port).encode())
+
         return True
 
     else:
         print('Tracker not found')
+        return False
 
 
-# List of options
 def options():
+    """List of options."""
     print('''List of options:-
             connecttracker (t)
             register (r)
@@ -275,6 +288,7 @@ frmt = 'utf-8'
 is_trck = False
 trck_clnt = None
 peers = {}
+
 
 # Server object
 s_port = int(input('Enter your port:'))
@@ -409,7 +423,6 @@ while True:
                     fileop = FileOp(p2p_lst[2])
 
                     for i in range(d['NoBlocks']):
-                        print('Receive', i+1)
                         fileop.file_receive(p2p_clnt.receive_msg(512 * 1024))
 
                     print(p2p_lst[2], 'received')
