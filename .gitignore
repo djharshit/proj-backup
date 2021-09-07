@@ -1,5 +1,6 @@
+receive/
+send/
+__pycache__/
 details.json
 files.json
 tracker.log
-receive/
-send/
