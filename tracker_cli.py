@@ -17,8 +17,16 @@ class UsersDetails():
     Ab kya btaye
     """
 
-    # Registration of the peer for first time and Save details in detail.json
+    def __init__(self, p_port):
+        self.p_port = p_port
+
     def peer_register(self, dtls):
+        """Registration of the peer for first time and
+            Save details in detail.json.
+
+        Args:
+            dtls (TYPE): Description
+        """
         details_lock.acquire()
 
         with open('details.json', 'r+') as f:
@@ -31,7 +39,9 @@ class UsersDetails():
             else:
                 pwd = hashlib.sha256(dtls[2].encode()).hexdigest()
                 # print(pwd)
-                d = dict(uid=int(dtls[0]), name=dtls[1], password=pwd, port=int(dtls[3]))
+                d = dict(uid=int(dtls[0]), name=dtls[1],
+                         password=pwd, port=int(dtls[3]))
+
                 usrs['users'].append(d)
 
                 f.truncate(0)
@@ -39,13 +49,21 @@ class UsersDetails():
                 json.dump(usrs, f, indent=4)
 
                 m = 'User details saved'
-                logging.debug(f'Peer {p_port} -> {dtls[0]} {dtls[1]} registerd')
+                logging.debug(f'Peer {self.p_port} -> \
+                                {dtls[0]} {dtls[1]} registerd')
 
         details_lock.release()
         return m
 
-    # Login of peer using his details and taking further actions
     def peer_login(self, dtls):
+        """Login of peer using his details and taking further actions.
+
+        Args:
+            dtls (TYPE): Description
+
+        Returns:
+            TYPE: Description
+        """
         details_lock.acquire()
 
         with open('details.json', 'r+') as f:
@@ -63,7 +81,8 @@ class UsersDetails():
                         json.dump(usrs, f, indent=4)
                         f.truncate()
 
-                        logging.debug(f'Peer {p_port} -> {dtls[0]} logged in')
+                        logging.debug(f'Peer {self.p_port} -> \
+                                        {dtls[0]} logged in')
 
                         break
 
@@ -93,7 +112,8 @@ class FileOperation():
     def file_entry(self, file_block):
         files_lock.acquire()
 
-        logging.debug(f'Peer {self.p_port} Uid {self.uid} Savefile name {file_block["FileName"]}')
+        logging.debug(f'Peer {self.p_port} Uid {self.uid} \
+                        Savefile name {file_block["FileName"]}')
 
         with open('files.json', 'r+') as f:
             files = json.load(f)
@@ -125,7 +145,8 @@ class FileOperation():
     def file_detail(self, name):
         files_lock.acquire()
 
-        logging.debug(f'Peer {self.p_port} Uid {self.uid} Ask for file {name} detail')
+        logging.debug(f'Peer {self.p_port} Uid {self.uid} \
+                        Ask for file {name} detail')
 
         with open('details.json') as df, open('files.json') as ff:
             details = json.load(df)
@@ -173,7 +194,7 @@ class MyPeer:
                 print(self.p_port, '->', msg)
                 msg = msg.split() + [self.p_port]
 
-                user = UsersDetails()
+                user = UsersDetails(self.p_port)
                 msg = user.peer_register(msg)
                 self.conn.send(msg.encode())
 
@@ -182,10 +203,10 @@ class MyPeer:
             elif msg == 'login':
                 msg = self.conn.recv(1024).decode()
 
-                print(p_port, '->', msg)
+                print(self.p_port, '->', msg)
                 msg = msg.split() + [self.p_port]
 
-                user = UsersDetails()
+                user = UsersDetails(self.p_port)
                 msg = user.peer_login(msg)
 
                 data = pickle.dumps(msg)
@@ -240,29 +261,29 @@ class MyPeer:
             else:
                 self.conn.send(b'Wrong input')
 
-# __main__
 
-frmt = 'utf-8'
-
+# Log file configurations
 log_frmt = '{asctime} | {levelname} | {lineno} | {threadName} |{message}'
-logging.basicConfig(filename='tracker.log', level=logging.DEBUG, style='{', format=log_frmt)
+logging.basicConfig(filename='tracker.log', level=logging.DEBUG, style='{',
+                    format=log_frmt)
 
+# Setting Locks for the files
 details_lock = threading.Lock()
 files_lock = threading.Lock()
 
-t_port = 3030   # int(input('Enter tracker port:'))
+t_port = 3030  # int(input('Enter tracker port:'))
 s = socket.socket()
 
 host = '127.0.0.1'  # socket.gethostbyname(comp_nme)
 s.bind((host, t_port))
-s.listen(5)
+s.listen(10)
 
 print('[+] Tracker started on', t_port)
 logging.warning(f'Tracker started on {t_port}')
 
 while True:
-    conn, addr = s.accept()
-    s.settimeout(None)
+    conn, addr = self.s.accept()
+    self.s.settimeout(None)
     p_port = conn.recv(10).decode()
     print('[+] New Peer', p_port)
 

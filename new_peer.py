@@ -176,7 +176,7 @@ class FileOp:
             int: Size of file in bytes
         """
         x = self.fname
-        with open(f's./send/{self.name}', 'rb') as f:
+        with open(f'./send/{self.fname}', 'rb') as f:
             return len(f.read())
 
     def send_file_detail(self) -> dict:
@@ -258,7 +258,7 @@ def tracker():
     """
     global trck_clnt
 
-    t_port = 3030   # int(input('Enter tracker port:\n'))
+    t_port = int(input('Enter tracker port:\n'))
     trck_clnt = MyClient(t_port)
 
     if trck_clnt.server_connect():
@@ -422,24 +422,30 @@ while True:
 
         if p2p_clnt_port in peers:
             p2p_clnt = peers[p2p_clnt_port]
-            p2p_clnt.send_msg(p2p_msg.encode())
 
-            if p2p_lst[1] == 'sendfile':
-                msg = p2p_clnt.receive_msg().decode()
+            try:
+                p2p_clnt.send_msg(p2p_msg.encode())
 
-                if msg == 'OK':
-                    fileop = FileOp(p2p_lst[2])
+                if p2p_lst[1] == 'sendfile':
+                    msg = p2p_clnt.receive_msg().decode()
 
-                    for i in range(d['NoBlocks']):
-                        fileop.file_receive(p2p_clnt.receive_msg(512 * 1024))
+                    if msg == 'OK':
+                        fileop = FileOp(p2p_lst[2])
 
-                    print(p2p_lst[2], 'received')
+                        for i in range(d['NoBlocks']):
+                            fileop.file_receive(p2p_clnt.receive_msg(512 * 1024))
 
-                else:
-                    print(msg)
+                        print(p2p_lst[2], 'received')
+
+                    else:
+                        print(msg)
+            except:
+                print(f'{p2p_clnt_port} closed')
+                del peers[p2p_clnt_port]
 
         else:
             print('Peer not found, connect to it')
+
 
     elif msg == 'h':
         options()
@@ -458,8 +464,11 @@ while True:
             print('Peer not exist')
 
     elif msg == 'q':
-        print('[+] Bye')
-        break
+        if len(peers) == 0 and not is_trck:
+            print('[+] Bye')
+            break
+        else:
+            print('Not allowed to quit')
 
     else:
         print('Something went wrong')
