@@ -1,5 +1,10 @@
+receive/
+send/
+__pycache__/
+waste/
 details.json
 files.json
 tracker.log
-receive/
-send/
+g_p.py
+g_p1.py
+p.py
