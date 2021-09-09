@@ -7,4 +7,7 @@ files.json
 tracker.log
 g_p.py
 g_p1.py
+g_p2.py
 p.py
+a.py
+*.txt

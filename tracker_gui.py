@@ -282,10 +282,11 @@ def change_frame(frame):
 
 def check_port(*args):
     global t_port
+
     try:
         t_port = int(t_port_entry.get())
     except:
-        messagebox.showwarning('Wrong', 'Something went wrong')
+        messagebox.showwarning('Invalid', 'Wrong port number')
     else:
         wind.bind('<Return>', lambda x: ...)
 
@@ -326,8 +327,8 @@ def server_start():
         t.start()
 
 
-start_frame = tk.Frame(wind)
-sec_frame = tk.Frame(wind)
+start_frame = ttk.Frame(wind)
+sec_frame = ttk.Frame(wind)
 start_frame.grid(row=0, column=0, sticky='nsew')
 sec_frame.grid(row=0, column=0, sticky='nsew')
 

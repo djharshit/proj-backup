@@ -282,8 +282,8 @@ print('[+] Tracker started on', t_port)
 logging.warning(f'Tracker started on {t_port}')
 
 while True:
-    conn, addr = self.s.accept()
-    self.s.settimeout(None)
+    conn, addr = s.accept()
+    s.settimeout(None)
     p_port = conn.recv(10).decode()
     print('[+] New Peer', p_port)
 
