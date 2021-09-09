@@ -5,6 +5,7 @@ import socket
 import threading
 import pickle
 import hashlib
+from os import path
 
 
 class MyServer:
@@ -169,15 +170,6 @@ class FileOp:
         self.fname = fname
         self.size = 512 * 1024   # 512 kb
 
-    def file_size(self) -> int:
-        """Calculate the size of the file.
-
-        Returns:
-            int: Size of file in bytes
-        """
-        x = self.fname
-        with open(f'./send/{self.fname}', 'rb') as f:
-            return len(f.read())
 
     def send_file_detail(self) -> dict:
         """Send the file detail provided by peer to tracker
@@ -192,7 +184,7 @@ class FileOp:
 
         file_block['FileName'] = self.fname
         file_block['FileOwner'] = details[0], details[1]
-        file_block['TotalSize'] = self.file_size()
+        file_block['TotalSize'] = path.getsize(f'./send/{self.fname}')
         file_block['SHAofEveryBlock'] = []
 
         with open(f'./send/{self.fname}', 'rb') as f:
@@ -222,20 +214,20 @@ class FileOp:
         """
         file_parts = []
 
-        try:
-            with open(f'./send/{self.fname}', 'rb') as f:
+        # try:
+        with open(f'./send/{self.fname}', 'rb') as f:
+            data = f.read(self.size)
+
+            while data:
+                file_parts.append(data)
+
                 data = f.read(self.size)
 
-                while data:
-                    file_parts.append(data)
+        # except FileNotFoundError:
+        #     return False
 
-                    data = f.read(self.size)
-
-        except FileNotFoundError:
-            return False
-
-        else:
-            return file_parts
+        # else:
+        return file_parts
 
     def file_receive(self, data: bytes):
         """Recieve the file in chunks and append it to the new created file.
@@ -243,11 +235,9 @@ class FileOp:
         Args:
             data (bytes): A file chunk in bytes
         """
-        r = 1
         with open(f'./receive/{self.fname}', 'ab+') as f:
             b = f.write(data)
-            print('Received', r, 'size', b)
-            r += 1
+
 
 
 def tracker():
@@ -344,9 +334,9 @@ while True:
     elif msg == 's' and details:
         trck_clnt.send_msg(b'sendfile')
 
-        fpath = input('Enter file name:\n')
+        fname = input('Enter file name:\n')
 
-        fileop = FileOp(fpath)
+        fileop = FileOp(fname)
         file_block = fileop.send_file_detail()
 
         data = pickle.dumps(file_block)
@@ -379,9 +369,10 @@ while True:
             data = trck_clnt.clnt.recv(int(data_length))
 
             d = pickle.loads(data)
-            _d = d.copy()
-            del _d['SHAofEveryBlock']
-            for i, j in _d.items():
+
+            for i, j in d.items():
+                if i in ['SHAofEveryBlock', 'SHAofFullFile']:
+                    continue
                 print(i, j)
 
         else:
@@ -432,8 +423,13 @@ while True:
                     if msg == 'OK':
                         fileop = FileOp(p2p_lst[2])
 
-                        for i in range(d['NoBlocks']):
-                            fileop.file_receive(p2p_clnt.receive_msg(512 * 1024))
+                        for i, d in enumerate(d['SHAofEveryBlock']):
+                            block = p2p_clnt.receive_msg(512 * 1024)
+                            b_hsh = hashlib.sha1(block).hexdigest()
+
+                            if d == b_hsh:
+                                print('Receiving', i+1, 'OK')
+                                fileop.file_receive(block)
 
                         print(p2p_lst[2], 'received')
 
