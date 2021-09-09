@@ -118,6 +118,8 @@ class FileOperation():
         with open('files.json', 'r+') as f:
             files = json.load(f)
 
+            # file_block.append()
+
             files['files'].append(file_block)
 
             f.truncate(0)
@@ -160,7 +162,7 @@ class FileOperation():
                 # print(j)
                 if j['uid'] == i['FileOwner'][0]:
                     # print(j['uid'])
-                    i['PeerPort'] = j['port']
+                    i['PeerPorts'] = j['port']
 
         files_lock.release()
         return i
@@ -251,6 +253,8 @@ class MyPeer:
                     self.conn.send(data)
 
                 del fileop
+
+            # elif msg == 'more'
 
             elif msg == 'bye':
                 print('[+] Disconnected from peer', self.p_port)

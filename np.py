@@ -5,6 +5,7 @@ import socket
 import threading
 import pickle
 import hashlib
+import time
 from os import path
 
 
@@ -43,7 +44,8 @@ class MyServer:
             p2p_srvr_port = conn.recv(1024).decode()
             print('[+] New Peer', p2p_srvr_port)
 
-            s = threading.Thread(target=self.receive_msg, args=[conn, p2p_srvr_port])
+            s = threading.Thread(target=self.receive_msg,
+                                 args=[conn, p2p_srvr_port])
             s.start()
 
     def receive_msg(self, conn, addr) -> str:
@@ -77,13 +79,17 @@ class MyServer:
         file_lst = fileop.send_file()
 
         if file_lst:
-            conn.send(b'OK')
+            conn.send(b'File Found')
 
             for i, j in enumerate(file_lst):
                 print('Send', i + 1)
                 conn.send(j)
 
             print('All send')
+            # try:
+            #     trck_clnt.send(b'more')
+            # except:
+            #     print('You are disconnected from tracker')
 
         else:
             conn.send(b'File not found')
@@ -214,20 +220,20 @@ class FileOp:
         """
         file_parts = []
 
-        # try:
-        with open(f'./send/{self.fname}', 'rb') as f:
-            data = f.read(self.size)
-
-            while data:
-                file_parts.append(data)
-
+        try:
+            with open(f'./send/{self.fname}', 'rb') as f:
                 data = f.read(self.size)
 
-        # except FileNotFoundError:
-        #     return False
+                while data:
+                    file_parts.append(data)
 
-        # else:
-        return file_parts
+                    data = f.read(self.size)
+
+        except FileNotFoundError:
+            return False
+
+        else:
+            return file_parts
 
     def file_receive(self, data: bytes):
         """Recieve the file in chunks and append it to the new created file.
@@ -248,7 +254,7 @@ def tracker():
     """
     global trck_clnt
 
-    t_port = int(input('Enter tracker port:\n'))
+    t_port = 3030 # int(input('Enter tracker port:\n'))
     trck_clnt = MyClient(t_port)
 
     if trck_clnt.server_connect():
@@ -420,7 +426,7 @@ while True:
                 if p2p_lst[1] == 'sendfile':
                     msg = p2p_clnt.receive_msg().decode()
 
-                    if msg == 'OK':
+                    if msg == 'File Found':
                         fileop = FileOp(p2p_lst[2])
 
                         for i, d in enumerate(d['SHAofEveryBlock']):
@@ -430,6 +436,9 @@ while True:
                             if d == b_hsh:
                                 print('Receiving', i+1, 'OK')
                                 fileop.file_receive(block)
+                                time.sleep(1)
+                            else:
+                                print('Corrupted', i+1)
 
                         print(p2p_lst[2], 'received')
 
