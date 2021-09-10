@@ -74,6 +74,7 @@ class MyServer:
             conn : Connection object
             fname (str): Name of the file
         """
+
         fileop = FileOp(fname)
 
         file_lst = fileop.send_file()
@@ -84,12 +85,8 @@ class MyServer:
             for i, j in enumerate(file_lst):
                 print('Send', i + 1)
                 conn.send(j)
-
+                time.sleep(1)
             print('All send')
-            # try:
-            #     trck_clnt.send(b'more')
-            # except:
-            #     print('You are disconnected from tracker')
 
         else:
             conn.send(b'File not found')
@@ -164,7 +161,7 @@ class FileOp:
 
     Attributes:
         fname (str): Name of the file
-        size : 512 kb
+        size : 512 kb (chunk size)
     """
 
     def __init__(self, fname):
@@ -186,19 +183,18 @@ class FileOp:
         """
         file_block = {}
         no_blocks = 0
-        t = []
 
         file_block['FileName'] = self.fname
         file_block['FileOwner'] = details[0], details[1]
-        file_block['TotalSize'] = path.getsize(f'./send/{self.fname}')
+        file_block['TotalSize'] = path.getsize(f'./p/{self.fname}')
         file_block['SHAofEveryBlock'] = []
+        file_block['PeerPorts'] = [s_port]
 
-        with open(f'./send/{self.fname}', 'rb') as f:
+        with open(f'./p/{self.fname}', 'rb') as f:
             data = f.read(self.size)
             file_hsh = hashlib.sha1()
 
             while data:
-                t.append(data)
                 no_blocks += 1
 
                 block_hsh = hashlib.sha1(data).hexdigest()
@@ -212,38 +208,46 @@ class FileOp:
 
         return file_block
 
-    def send_file(self) -> list:
+    def send_file(self) -> iter:
         """Divide the file in specified size (chunks).
 
         Returns:
-            list : List of file data (chunks) in bytes
+            generator : Generator of file data (chunks) in bytes
         """
-        file_parts = []
-
         try:
-            with open(f'./send/{self.fname}', 'rb') as f:
+            with open(f'./p/{self.fname}', 'rb') as f:
                 data = f.read(self.size)
 
                 while data:
-                    file_parts.append(data)
+                    yield data
 
                     data = f.read(self.size)
 
         except FileNotFoundError:
             return False
 
-        else:
-            return file_parts
 
-    def file_receive(self, data: bytes):
+    def file_receive(self, conn, sha_list):
         """Recieve the file in chunks and append it to the new created file.
 
         Args:
-            data (bytes): A file chunk in bytes
+            conn
         """
-        with open(f'./receive/{self.fname}', 'ab+') as f:
-            b = f.write(data)
 
+        with open(f'./p/{self.fname}', 'wb+') as f:
+
+            for i, i_hsh in enumerate(sha_list):
+                block = conn.receive_msg(512 * 1024)
+                b_hsh = hashlib.sha1(block).hexdigest()
+
+                if i_hsh == b_hsh:
+                    print('Receiving', i+1, 'OK')
+                    f.write(block)
+                    time.sleep(1)
+                else:
+                    print('Corrupted', i+1)
+
+        # return True
 
 
 def tracker():
@@ -427,20 +431,18 @@ while True:
                     msg = p2p_clnt.receive_msg().decode()
 
                     if msg == 'File Found':
+                        sha_lst = d['SHAofEveryBlock']
+
                         fileop = FileOp(p2p_lst[2])
-
-                        for i, d in enumerate(d['SHAofEveryBlock']):
-                            block = p2p_clnt.receive_msg(512 * 1024)
-                            b_hsh = hashlib.sha1(block).hexdigest()
-
-                            if d == b_hsh:
-                                print('Receiving', i+1, 'OK')
-                                fileop.file_receive(block)
-                                time.sleep(1)
-                            else:
-                                print('Corrupted', i+1)
+                        fileop.file_receive(p2p_clnt, sha_lst)
 
                         print(p2p_lst[2], 'received')
+
+                        try:
+                            trck_clnt.send_msg(b'more')
+                            trck_clnt.send_msg(p2p_lst[2].encode())
+                        except:
+                            print('You are disconnect from tracker')
 
                     else:
                         print(msg)

@@ -1,4 +1,5 @@
-"""Tracker program to and save the details of peers and files given
+"""
+Tracker program to and save the details of peers and files given
 by them.
 """
 import socket
@@ -7,25 +8,32 @@ import json
 import logging
 import hashlib
 import pickle
-import os
 
 
 class UsersDetails():
+    """Class for handling user login and register.
 
-    """
-    Summary.
-    Ab kya btaye
+    This class perform two tasks:
+        1. Register the new peer and act accordingly
+        2. Login the existing peer, if success then update the
+           new port of the user
+
+    Attributes:
+        p_port (int): Port of the peer from which this class is called
     """
 
-    def __init__(self, p_port):
+    def __init__(self, p_port: int):
         self.p_port = p_port
 
-    def peer_register(self, dtls):
+    def peer_register(self, dtls: list) -> str:
         """Registration of the peer for first time and
-            Save details in detail.json.
+           Save details in details file
 
         Args:
-            dtls (TYPE): Description
+            dtls (list): ['Uid', 'Name', 'Password']
+
+        Returns:
+            msg: Register message
         """
         details_lock.acquire()
 
@@ -40,7 +48,7 @@ class UsersDetails():
                 pwd = hashlib.sha256(dtls[2].encode()).hexdigest()
                 # print(pwd)
                 d = dict(uid=int(dtls[0]), name=dtls[1],
-                         password=pwd, port=int(dtls[3]))
+                         password=pwd, port=self.p_port)
 
                 usrs['users'].append(d)
 
@@ -55,35 +63,50 @@ class UsersDetails():
         details_lock.release()
         return m
 
-    def peer_login(self, dtls):
-        """Login of peer using his details and taking further actions.
+    def peer_login(self, dtls: list) -> str:
+        """Login of peer using his details and
+           updating its new port in both files.
 
         Args:
-            dtls (TYPE): Description
+            dtls (list): ['Uid', 'Password']
 
         Returns:
-            TYPE: Description
+            msg: Login message
         """
         details_lock.acquire()
+        files_lock.acquire()
 
-        with open('details.json', 'r+') as f:
-            usrs = json.load(f)
+        with open('details.json', 'r+') as df, open('files.json', 'r+') as ff:
+            usrs = json.load(df)
+            files = json.load(ff)
 
             for i in usrs['users']:
                 if int(dtls[0]) == i['uid']:
                     pwd = hashlib.sha256(dtls[1].encode()).hexdigest()
                     # print(pwd)
                     if pwd == i['password']:
-                        i['port'] = int(dtls[2])
+                        old_port = i['port']
+
+                        i['port'] = self.p_port
                         m = 'Login successful', i['uid'], i['name'], i['port']
 
-                        f.seek(0)
-                        json.dump(usrs, f, indent=4)
-                        f.truncate()
+                        # Update the port no if login success in details
+                        df.truncate(0)
+                        df.seek(0)
+                        json.dump(usrs, df, indent=4)
 
                         logging.debug(f'Peer {self.p_port} -> \
                                         {dtls[0]} logged in')
 
+                        # Update the port no of the file it has send in files
+                        for j in files['files']:
+                            if old_port in j['PeerPorts']:
+                                j['PeerPorts'].remove(old_port)
+                                j['PeerPorts'].append(i['port'])
+
+                                ff.truncate(0)
+                                ff.seek(0)
+                                json.dump(files, ff, indent=4)
                         break
 
                     else:
@@ -93,23 +116,35 @@ class UsersDetails():
                 m = 'Uid not found',
 
         details_lock.release()
+        files_lock.release()
         return m
 
 
 class FileOperation():
+    """Class for handling all file related operations.
 
-    """Summary.
+    This class perform four tasks:
+        1. Register a new file in the files
+        2. Show only name and size of all files to the peer
+        3. Return all details of a file to the peer
+        4. Update the current PeerPorts list of the file
 
     Attributes:
-        p_port (TYPE): Description
+        p_port (int): Port of the peer from which this class is called
+        uid (int): Uid of the peer from which this class is called
     """
 
-    def __init__(self, p_port, uid):
+    def __init__(self, p_port: int, uid: int):
         self.p_port = p_port
         self.uid = uid
 
-    # Save file details provided by peer in the files.json
-    def file_entry(self, file_block):
+    def file_entry(self, file_block: dict):
+        """Save file details provided by peer in the files.
+
+        Args:
+            file_block (dict): Dictionary of file details
+\
+        """
         files_lock.acquire()
 
         logging.debug(f'Peer {self.p_port} Uid {self.uid} \
@@ -130,6 +165,9 @@ class FileOperation():
         return 'File details saved'
 
     def file_show(self):
+        """Show the names and size of all files so that the peer can
+           choose one from it.
+        """
         files_lock.acquire()
 
         logging.debug(f'Peer {self.p_port} Uid {self.uid} Ask for files')
@@ -144,37 +182,80 @@ class FileOperation():
         files_lock.release()
         return d
 
-    def file_detail(self, name):
+    def file_detail(self, name: str) -> dict:
+        """Give all details of the file to the peer
+
+        Args:
+            name (str): Name of the file
+
+        Returns:
+            dict: File details dictionary
+        """
         files_lock.acquire()
 
         logging.debug(f'Peer {self.p_port} Uid {self.uid} \
                         Ask for file {name} detail')
 
-        with open('details.json') as df, open('files.json') as ff:
-            details = json.load(df)
-            files = json.load(ff)
+        with open('files.json') as f:
+            files = json.load(f)
 
             for i in files['files']:
                 if i['FileName'] == name:
                     break
 
-            for j in details['users']:
-                # print(j)
-                if j['uid'] == i['FileOwner'][0]:
-                    # print(j['uid'])
-                    i['PeerPorts'] = j['port']
-
         files_lock.release()
         return i
 
+    def update_peer(self, fname: str) -> None:
+        """Update the file PeerPorts to the port of the peer.
+
+        Args:
+            fname (str): File name to which port be added
+        """
+        files_lock.acquire()
+
+        with open('files.json', 'r+') as f:
+            files = json.load(f)
+
+            for i in files['files']:
+                if i['FileName'] == fname:
+                    i['PeerPorts'].append(self.p_port)
+
+                    f.truncate(0)
+                    f.seek(0)
+                    json.dump(files, f, indent=4)
+
+                    break
+        files_lock.release()
+
+    def delete_peer(self):
+        files_lock.acquire()
+
+        with open('files.json', 'r+') as f:
+            files = json.load(f)
+
+            for i in files['files']:
+                if self.p_port in i['PeerPorts']:
+                    i['PeerPorts'].remove(self.p_port)
+
+            f.truncate(0)
+            f.seek(0)
+            json.dump(files, f, indent=4)
+
+        files_lock.release()
+
+
 
 class MyPeer:
-    """Peer class
+    """Class for handling the peer messages and act accordingly.
+
+    This class perform one task:
+        1. Chat with the particular peer and act accordingly to
+           the condition
 
     Attributes:
-        conn (TYPE): Description
-        detail (list): Description
-        p_port (TYPE): Description
+        conn (obj): Connection object of the peer client
+        p_port (int): Port of the peer from which it is chatting
     """
 
     def __init__(self, conn, p_port):
@@ -184,6 +265,9 @@ class MyPeer:
         self.uid = None
 
     def peer_chat(self):
+        """Chat with the particular peer and act accordingly to
+           the condition.
+        """
         while True:
             msg = self.conn.recv(1024).decode()
             print(f'Peer {self.p_port} -> {msg}')
@@ -194,19 +278,17 @@ class MyPeer:
                 msg = self.conn.recv(1024).decode()
 
                 print(self.p_port, '->', msg)
-                msg = msg.split() + [self.p_port]
+                msg = msg.split()
 
                 user = UsersDetails(self.p_port)
                 msg = user.peer_register(msg)
                 self.conn.send(msg.encode())
 
-                del user
-
             elif msg == 'login':
                 msg = self.conn.recv(1024).decode()
 
                 print(self.p_port, '->', msg)
-                msg = msg.split() + [self.p_port]
+                msg = msg.split()
 
                 user = UsersDetails(self.p_port)
                 msg = user.peer_login(msg)
@@ -219,8 +301,6 @@ class MyPeer:
                 if self.detail != []:
                     self.uid = self.detail[0]
 
-                del user
-
             elif msg == 'sendfile':
                 data_length = self.conn.recv(1024).decode()
                 data = self.conn.recv(int(data_length))
@@ -231,8 +311,6 @@ class MyPeer:
                 msg = fileop.file_entry(file_block)
 
                 self.conn.send(msg.encode())
-
-                del fileop
 
             elif msg == 'getfiles':
                 fileop = FileOperation(self.p_port, self.uid)
@@ -252,11 +330,16 @@ class MyPeer:
                     self.conn.send(data_length.encode())
                     self.conn.send(data)
 
-                del fileop
+            elif msg == 'more':
+                fname = self.conn.recv(1024).decode()
 
-            # elif msg == 'more'
+                fileop = FileOperation(self.p_port, self.uid)
+                fileop.update_peer(fname)
 
             elif msg == 'bye':
+                # fileop = FileOperation(self.p_port, self.uid)
+                # fileop.delete_peer()
+
                 print('[+] Disconnected from peer', self.p_port)
                 logging.warning(f'Peer {self.p_port} -> disconnected')
                 self.conn.close()
@@ -265,6 +348,7 @@ class MyPeer:
             else:
                 self.conn.send(b'Wrong input')
 
+# ====== Main ======
 
 # Log file configurations
 log_frmt = '{asctime} | {levelname} | {lineno} | {threadName} |{message}'
@@ -275,26 +359,31 @@ logging.basicConfig(filename='tracker.log', level=logging.DEBUG, style='{',
 details_lock = threading.Lock()
 files_lock = threading.Lock()
 
-t_port = 3030  # int(input('Enter tracker port:'))
-s = socket.socket()
+def main():
+    t_port = 3030  # int(input('Enter tracker port:'))
+    s = socket.socket()
 
-host = '127.0.0.1'  # socket.gethostbyname(comp_nme)
-s.bind((host, t_port))
-s.listen(10)
+    host = '127.0.0.1'  # socket.gethostbyname(comp_nme)
+    s.bind((host, t_port))
+    s.listen(10)
 
-print('[+] Tracker started on', t_port)
-logging.warning(f'Tracker started on {t_port}')
+    print('[+] Tracker started on', t_port)
+    logging.warning(f'Tracker started on {t_port}')
 
-while True:
-    conn, addr = s.accept()
-    s.settimeout(None)
-    p_port = conn.recv(10).decode()
-    print('[+] New Peer', p_port)
+    while True:
+        conn, addr = s.accept()
+        s.settimeout(None)
 
-    myp = MyPeer(conn, p_port)
+        p_port = conn.recv(10).decode()
+        print('[+] New Peer', p_port)
 
-    t = threading.Thread(target=myp.peer_chat)
-    logging.info(f'New Peer {p_port} with thread {t.name}')
-    t.start()
+        myp = MyPeer(conn, int(p_port))
 
-s.close()
+        t = threading.Thread(target=myp.peer_chat)
+        logging.info(f'New Peer {p_port} with thread {t.name}')
+        t.start()
+
+    s.close()
+
+if __name__ == '__main__':
+    main()
