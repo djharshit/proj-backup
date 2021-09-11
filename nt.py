@@ -74,39 +74,29 @@ class UsersDetails():
             msg: Login message
         """
         details_lock.acquire()
-        files_lock.acquire()
 
-        with open('details.json', 'r+') as df, open('files.json', 'r+') as ff:
-            usrs = json.load(df)
-            files = json.load(ff)
+        with open('details.json', 'r+') as f:
+            users = json.load(f)
 
-            for i in usrs['users']:
+            for i in users['users']:
                 if int(dtls[0]) == i['uid']:
                     pwd = hashlib.sha256(dtls[1].encode()).hexdigest()
                     # print(pwd)
                     if pwd == i['password']:
-                        old_port = i['port']
+                        logging.debug(f'Peer {self.p_port} -> \
+                            {dtls[0]} logged in')
 
+                        old_port = i['port']
                         i['port'] = self.p_port
                         m = 'Login successful', i['uid'], i['name'], i['port']
 
                         # Update the port no if login success in details
-                        df.truncate(0)
-                        df.seek(0)
-                        json.dump(usrs, df, indent=4)
-
-                        logging.debug(f'Peer {self.p_port} -> \
-                                        {dtls[0]} logged in')
-
-                        # Update the port no of the file it has send in files
-                        for j in files['files']:
-                            if old_port in j['PeerPorts']:
-                                j['PeerPorts'].remove(old_port)
-                                j['PeerPorts'].append(i['port'])
-
-                                ff.truncate(0)
-                                ff.seek(0)
-                                json.dump(files, ff, indent=4)
+                        f.truncate(0)
+                        f.seek(0)
+                        json.dump(users, f, indent=4)
+                        print(97, old_port)
+                        self.update_ports(old_port)
+                        print(99, old_port)
                         break
 
                     else:
@@ -116,8 +106,32 @@ class UsersDetails():
                 m = 'Uid not found',
 
         details_lock.release()
-        files_lock.release()
         return m
+
+    def update_ports(self, old_port: int) -> None:
+        """Update the port no of the file it has send in files.
+
+        Args:
+            old_port (int): Old port of the peer
+        """
+        files_lock.acquire()
+        print(118, old_port)
+        with open('files.json', 'r+') as f:
+            files = json.load(f)
+            print(121, old_port)
+            for j in files['files']:
+                print(123, old_port)
+                if old_port in j['PeerPorts']:
+                    print(125, old_port)
+                    j['PeerPorts'].remove(old_port)
+                    j['PeerPorts'].append(self.p_port)
+                    print(125, j['PeerPorts'])
+
+            f.truncate(0)
+            f.seek(0)
+            json.dump(files, f, indent=4)
+
+        files_lock.release()
 
 
 class FileOperation():
@@ -143,7 +157,7 @@ class FileOperation():
 
         Args:
             file_block (dict): Dictionary of file details
-\
+
         """
         files_lock.acquire()
 
@@ -243,7 +257,6 @@ class FileOperation():
             json.dump(files, f, indent=4)
 
         files_lock.release()
-
 
 
 class MyPeer:
@@ -358,6 +371,7 @@ logging.basicConfig(filename='tracker.log', level=logging.DEBUG, style='{',
 # Setting Locks for the files
 details_lock = threading.Lock()
 files_lock = threading.Lock()
+
 
 def main():
     t_port = 3030  # int(input('Enter tracker port:'))
