@@ -4,6 +4,7 @@
 p/
 waste/
 __pycache__/
+1.sh
 details.json
 files.json
 tracker.log
