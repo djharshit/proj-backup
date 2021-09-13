@@ -1,7 +1,10 @@
+#!usr/bin/env python3
+
 """
 Tracker program to and save the details of peers and files given
 by them.
 """
+
 import socket
 import threading
 import json
@@ -10,7 +13,7 @@ import hashlib
 import pickle
 
 
-class UsersDetails():
+class UsersDetails:
     """Class for handling user login and register.
 
     This class perform two tasks:
@@ -83,8 +86,7 @@ class UsersDetails():
                     pwd = hashlib.sha256(dtls[1].encode()).hexdigest()
                     # print(pwd)
                     if pwd == i['password']:
-                        logging.debug(f'Peer {self.p_port} -> \
-                            {dtls[0]} logged in')
+                        logging.debug(f'Peer {self.p_port} -> {dtls[0]} logged in')
 
                         old_port = i['port']
                         i['port'] = self.p_port
@@ -134,7 +136,7 @@ class UsersDetails():
         files_lock.release()
 
 
-class FileOperation():
+class FileOperation:
     """Class for handling all file related operations.
 
     This class perform four tasks:
@@ -161,8 +163,7 @@ class FileOperation():
         """
         files_lock.acquire()
 
-        logging.debug(f'Peer {self.p_port} Uid {self.uid} \
-                        Savefile name {file_block["FileName"]}')
+        logging.debug(f'Peer {self.p_port} Uid {self.uid} Savefile name {file_block["FileName"]}')
 
         with open('files.json', 'r+') as f:
             files = json.load(f)
@@ -207,8 +208,7 @@ class FileOperation():
         """
         files_lock.acquire()
 
-        logging.debug(f'Peer {self.p_port} Uid {self.uid} \
-                        Ask for file {name} detail')
+        logging.debug(f'Peer {self.p_port} Uid {self.uid} Ask for file {name} detail')
 
         with open('files.json') as f:
             files = json.load(f)
@@ -366,7 +366,7 @@ class MyPeer:
 # Log file configurations
 log_frmt = '{asctime} | {levelname} | {lineno} | {threadName} |{message}'
 logging.basicConfig(filename='tracker.log', level=logging.DEBUG, style='{',
-                    format=log_frmt)
+                    format=log_frmt, filemode='w')
 
 # Setting Locks for the files
 details_lock = threading.Lock()
