@@ -44,7 +44,7 @@ class MyServer:
             conn, addr = self.srvr.accept()
 
             p2p_srvr_port = conn.recv(1024).decode()
-            print('[+] New Peer', p2p_srvr_port, 47)
+            print('[+] New Peer', p2p_srvr_port)
 
             s = threading.Thread(target=self.receive_msg,
                                  args=[conn, p2p_srvr_port])
@@ -59,7 +59,7 @@ class MyServer:
         """
         while True:
             msg = conn.recv(1024).decode()
-            print(63, addr, '->', msg, 63)
+            print(addr, '->', msg)
 
             if msg == 'bye':
                 print(addr, 'disconnected')
@@ -283,8 +283,8 @@ class FileOp:
 
         print(self.fname, 'Received')
 
-        # self.conn.send_msg(b'bye')
-        # self.conn.clnt.close()
+        self.conn.send_msg(b'bye')
+        self.conn.clnt.close()
 
         # return True
 
@@ -511,19 +511,20 @@ while True:
                 else:
                     print(p2p_clnt_port, 'is sleeping')
 
-            how_many_peer = len(peers)
+            peer_no = len(peers)
 
-            if file_detl['NoBlocks'] % how_many_peer == 0:
-                parts_from_each_peer = file_detl['NoBlocks'] // how_many_peer
+            if file_detl['NoBlocks'] % peer_no == 0:
+                each_parts = file_detl['NoBlocks'] // peer_no
             else:
-                parts_from_each_peer = (file_detl['NoBlocks'] // how_many_peer) + 1
+                each_parts = (file_detl['NoBlocks'] // peer_no) + 1
 
             time.sleep(0.5)
             fname = file_detl['FileName']
-            f, l = 1, parts_from_each_peer
-            left = file_detl['NoBlocks']
+            f, l = 1, each_parts
+            last = left = file_detl['NoBlocks']
             for k, v in peers.items():
-                # print(k, f, l)
+                left -= each_parts
+
                 v.send_msg(f'sendfile {fname} {f} {l}'.encode())
 
                 fileop = FileOp(fname, v)
@@ -532,15 +533,12 @@ while True:
                 t = threading.Thread(target=fileop.file_receive, args=[f, file_detl['SHAofEveryBlock'][f-1:l]])
                 t.start()
 
-                f += parts_from_each_peer
-                if left >= parts_from_each_peer:
-                    l += parts_from_each_peer
+                f += each_parts
+                if left >= each_parts:
+                    l += each_parts
                 else:
-                    l = file_detl['NoBlocks']
+                    l = last
 
-                left -= parts_from_each_peer
-
-            # print(fname, 'Received', 519)
             trck_clnt.send_msg(b'more')
             trck_clnt.send_msg(fname.encode())
 
@@ -561,7 +559,7 @@ while True:
             print('Peer not exist')
 
     elif msg == 'q':
-        if len(peers) == 0 and not is_trck:
+        if not is_trck:
             print('[+] Bye')
             break
         else:
