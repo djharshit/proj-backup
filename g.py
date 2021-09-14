@@ -11,7 +11,131 @@ import time
 from os import path
 
 
-class MyServer:
+class FileOp:
+    """Class for handling all file related operations.
+
+    This class perform three tasks:
+        1. Make file detail in specific format and send it to MyServer class
+        2. Send the file to the peer in chunks
+        3. Receive the file from the peer
+
+    Attributes:
+        fname (str): Name of the file
+        size : 512 kb (chunk size)
+    """
+
+    whole_file = []
+
+    def __init__(self, fname, conn=None):
+        """Init method of FileOp class.
+
+        Args:
+            fname (TYPE): Description
+        """
+        self.fname = fname
+        self.conn = conn
+
+    def send_file_detail(self) -> dict:
+        """Send the file detail provided by peer to tracker
+            in the specified format.
+
+        Returns:
+            dict : Dictionary of file block in specified format
+        """
+        file_block = {}
+        no_blocks = 0
+        size = 512 * 1024   # 512 kb
+
+        file_block['FileName'] = self.fname
+        file_block['FileOwner'] = details[0], details[1]
+        file_block['TotalSize'] = path.getsize(f'./p/{self.fname}')
+        file_block['SHAofEveryBlock'] = []
+        file_block['PeerPorts'] = [s_port]
+
+        with open(f'./p/{self.fname}', 'rb') as f:
+            data = f.read(size)
+            file_hsh = hashlib.sha1()
+
+            while data:
+                no_blocks += 1
+
+                block_hsh = hashlib.sha1(data).hexdigest()
+                file_block['SHAofEveryBlock'].append(block_hsh)
+                file_hsh.update(data)
+
+                data = f.read(size)
+
+        file_block['SHAofFullFile'] = file_hsh.hexdigest()
+        file_block['NoBlocks'] = no_blocks
+
+        return file_block
+
+    def send_file(self, start, end):
+        """Divide the file in specified size (chunks).
+
+        Returns:
+            generator : Generator of file data (chunks) in bytes
+        """
+        file_parts = []
+        size = 512 * 1024   # 512 kb
+
+        with open(f'./p/{self.fname}', 'rb') as f:
+            data = f.read(size)
+
+            while data:
+                file_parts.append(data)
+                data = f.read(size)
+
+        for i in range(start, end + 1):
+            print('Send part', i)
+            data = [i, file_parts[i - 1]]
+            self.conn.send(pickle.dumps(data))
+            time.sleep(0.5)
+
+    @classmethod
+    def receive_file(cls, fname, clnt, start, sha_list):
+        """Recieve the file in chunks and append it to the new created file.
+
+        Args:
+            conn
+        """
+
+        size = 513 * 1024   # 512 kb -> file_part | 1 kb -> part_number
+        cls.whole_file += [0] * len(sha_list)
+        # print(len(cls.whole_file), 105)
+
+        for i, i_hsh in enumerate(sha_list):
+
+            data = clnt.receive_msg(size)
+            no, block = pickle.loads(data)
+
+            b_hsh = hashlib.sha1(block).hexdigest()
+
+            if i_hsh == b_hsh:
+                print('Receiving', i + start, 'OK')
+                cls.whole_file[no - 1] = block
+                time.sleep(0.5)
+            else:
+                print('Corrupted', i + start)
+
+        # if cls.whole_file.count(0) != 0:
+        #     print(cls.whole_file.index(0)+1, 'Error')
+        # else:
+        #     print('All OK')
+
+        time.sleep(0.5)
+        with open(f'./p/{fname}', 'wb+') as f:
+            for i in cls.whole_file:
+                if type(i) is int:
+                    print(cls.whole_file.index(i)+1, '====== Corrupted ======')
+                    continue
+                f.write(i)
+
+        clnt.send_msg(b'bye')
+        clnt.clnt.close()
+
+
+class MyServer(FileOp):
     """Our peer server.
 
     This class perform three tasks:
@@ -50,12 +174,12 @@ class MyServer:
                                  args=[conn, p2p_srvr_port])
             s.start()
 
-    def receive_msg(self, conn, addr) -> str:
+    def receive_msg(self, conn, addr) -> None:
         """Receive messages from the other peers.
 
         Args:
             conn : Socket connection object
-            addr : Peer port
+            addr : Peer port no
         """
         while True:
             msg = conn.recv(1024).decode()
@@ -66,40 +190,15 @@ class MyServer:
                 conn.close()
                 break
 
-            elif msg.split()[0] == 'sendfile':
-                self.send_file(conn, msg)
+            elif msg.startswith('sendfile'):
+                fname, f, l = msg.split()[1:]
+                f, l = int(f), int(l)
 
-    def send_file(self, conn, msg):
-        """Send the file in chunks to the peer.
-
-        Args:
-            conn : Connection object
-            fname (str): Name of the file
-        """
-
-        fname, f, l = msg.split()[1:]
-        f, l = int(f), int(l)
-        # print(fname, f, l, 79)
-        # print(type(fname), type(f), type(l))
-        fileop = FileOp(fname, conn)
-        fileop.send_file(f, l)
-        '''
-        if file_lst:
-            conn.send(b'File Found')
-
-            for i, j in enumerate(file_lst):
-                print('Send', i + 1)
-                conn.send(j)
-                time.sleep(0.5)
-            print('All send')
-
-        else:
-            conn.send(b'File not found')
-        '''
-        del fileop
+                super().__init__(fname, conn)
+                self.send_file(f, l)
 
 
-class MyClient:
+class MyClient(FileOp):
     """Client class: handling clients objects.
 
     This class perform four tasks:
@@ -131,7 +230,7 @@ class MyClient:
         """
         try:
             self.clnt.connect((self.host, self.port))
-        except:
+        except ConnectionRefusedError:
             return False
         else:
             return True
@@ -156,144 +255,11 @@ class MyClient:
         return self.clnt.recv(size)
 
 
-class FileOp:
-    """Class for handling all file related operations.
-
-    This class perform three tasks:
-        1. Make file detail in specific format and send it to MyServer class
-        2. Send the file to the peer in chunks
-        3. Receive the file from the peer
-
-    Attributes:
-        fname (str): Name of the file
-        size : 512 kb (chunk size)
-    """
-
-    whole_file = []
-
-    def __init__(self, fname, conn):
-        """Init method of FileOp class.
-
-        Args:
-            fname (TYPE): Description
-        """
-        self.fname = fname
-        self.conn = conn
-        self.size = 512 * 1024   # 512 kb
-
-    def send_file_detail(self) -> dict:
-        """Send the file detail provided by peer to tracker
-            in the specified format.
-
-        Returns:
-            dict : Dictionary of file block in specified format
-        """
-        file_block = {}
-        no_blocks = 0
-
-        file_block['FileName'] = self.fname
-        file_block['FileOwner'] = details[0], details[1]
-        file_block['TotalSize'] = path.getsize(f'./p/{self.fname}')
-        file_block['SHAofEveryBlock'] = []
-        file_block['PeerPorts'] = [s_port]
-
-        with open(f'./p/{self.fname}', 'rb') as f:
-            data = f.read(self.size)
-            file_hsh = hashlib.sha1()
-
-            while data:
-                no_blocks += 1
-
-                block_hsh = hashlib.sha1(data).hexdigest()
-                file_block['SHAofEveryBlock'].append(block_hsh)
-                file_hsh.update(data)
-
-                data = f.read(self.size)
-
-        file_block['SHAofFullFile'] = file_hsh.hexdigest()
-        file_block['NoBlocks'] = no_blocks
-
-        return file_block
-
-    def send_file(self, start, end) -> iter:
-        """Divide the file in specified size (chunks).
-
-        Returns:
-            generator : Generator of file data (chunks) in bytes
-        """
-        # print(self.fname, start, end, 219)
-        # print(type(self.fname), type(start), type(end))
-
-        file_parts = []
-        with open(f'./p/{self.fname}', 'rb') as f:
-            data = f.read(self.size)
-
-            while data:
-                file_parts.append(data)
-                data = f.read(self.size)
-
-        for i in range(start, end+1):
-            print('Send part', i)
-            # self.conn.send(file_parts[i-1])
-            # self.conn.send(str(i).encode())
-            data = [i, file_parts[i-1]]
-            self.conn.send(pickle.dumps(data))
-            time.sleep(0.5)
-
-    def file_receive(self, start, sha_list: list):
-        """Recieve the file in chunks and append it to the new created file.
-
-        Args:
-            conn
-        """
-        # print(len(sha_list))
-        self.whole_file += [0] * len(sha_list)
-
-        for i, i_hsh in enumerate(sha_list):
-            # no = self.conn.receive_msg(1).decode()
-            # block = self.conn.receive_msg(512 * 1024) # .decode().split(maxsplit=1)
-            # no = self.conn.receive_msg(10).decode()
-            # print(no, block)
-
-            data = self.conn.receive_msg(513 * 1024) # .decode().split(maxsplit=1)
-            no, block = pickle.loads(data)
-            # print(type(no), type(block), 260)
-
-            b_hsh = hashlib.sha1(block).hexdigest()
-
-            if i_hsh == b_hsh:
-                print('Receiving', i+start, 'OK')
-                self.whole_file[no-1] = block
-                time.sleep(0.5)
-            else:
-                print('Corrupted', i+start)
-
-        # print(len(self.whole_file))
-        if 0 in self.whole_file:
-            print('====== Yes ======')
-        else:
-            print('====== No ======')
-
-        with open(f'./p/{self.fname}', 'wb+') as f:
-            for i in self.whole_file:
-                if type(i) is int:
-                    # print(self.whole_file.index(i) , '====== Corrupted ======')
-                    continue
-                f.write(i)
-
-        print(self.fname, 'Received')
-
-        self.conn.send_msg(b'bye')
-        self.conn.clnt.close()
-
-        # return True
-
-
 def tracker() -> bool:
     """Handling tracker client object.
 
     Returns:
-        bool: True is tracker is running, otherwise False
+        bool: True if connected with the tracker, otherwise False
     """
     global trck_clnt
 
@@ -303,7 +269,6 @@ def tracker() -> bool:
     if trck_clnt.server_connect():
         print('[+] Connected to', t_port)
         trck_clnt.send_msg(str(s_port).encode())
-
         return True
 
     else:
@@ -315,18 +280,15 @@ def options():
     """List of options."""
     print('''List of options:-
             connecttracker (t)
-            quittracker (k)
             register (r)
             login (l)
             mydetail (m)
             sendfile (s)
             getfiles (g)
             downloadfile (d)
-            connectwithpeer (c)
-            chatwithpeer (p)
-            help (h)
-            quitpeer(e)
+            quittracker (k)
             quit (q)
+            help (h)
             ''')
 
 # __main__
@@ -386,7 +348,7 @@ while True:
 
         fname = input('Enter file name:\n')
 
-        fileop = FileOp(fname, None)
+        fileop = FileOp(fname)
         file_block = fileop.send_file_detail()
 
         data = pickle.dumps(file_block)
@@ -440,123 +402,66 @@ while True:
         del trck_clnt
 
     # Peer chatting
-    elif msg == 'c':
-        p2p_clnt_port = int(input('Enter peer port:\n'))
-
-        p2p_clnt = MyClient(p2p_clnt_port)
-
-        if p2p_clnt.server_connect():
-            print('[+] Connected to', p2p_clnt_port)
-
-            peers[p2p_clnt_port] = p2p_clnt
-            p2p_clnt.send_msg(str(s_port).encode())
-
-        else:
-            print(p2p_clnt_port, 'is sleeping')
-
-    elif msg == 'p':
-        p2p_lst = input('Enter peerport message:\n').split()
-
-        p2p_clnt_port, p2p_msg = int(p2p_lst[0]), p2p_lst[1:]
-
-        p2p_msg = ' '.join(p2p_msg)
-
-        if p2p_clnt_port in peers:
-            p2p_clnt = peers[p2p_clnt_port]
-
-            try:
-                p2p_clnt.send_msg(p2p_msg.encode())
-
-                if p2p_lst[1] == 'sendfile':
-                    msg = p2p_clnt.receive_msg().decode()
-
-                    if msg == 'File Found':
-                        sha_lst = file_detl['SHAofEveryBlock']
-
-                        fileop = FileOp(p2p_lst[2])
-                        fileop.file_receive(p2p_clnt, sha_lst)
-
-                        print(p2p_lst[2], 'received')
-
-                        try:
-                            trck_clnt.send_msg(b'more')
-                            trck_clnt.send_msg(p2p_lst[2].encode())
-                        except:
-                            print('You are disconnect from tracker')
-
-                    else:
-                        print('File not found')
-            except:
-                print(f'{p2p_clnt_port} closed')
-                del peers[p2p_clnt_port]
-
-        else:
-            print('Peer not found, connect to it')
-
     elif msg == 'd':
-        # fname = input('Enter file name:\n')
 
         if file_detl is None:
             print('There is no file detail')
+            continue
 
-        else:
-            for p2p_clnt_port in file_detl['PeerPorts']:
-                p2p_clnt = MyClient(p2p_clnt_port)
+        for p2p_clnt_port in file_detl['PeerPorts']:
+            p2p_clnt = MyClient(p2p_clnt_port)
 
-                if p2p_clnt.server_connect():
-                    print('[+] Connected to', p2p_clnt_port)
+            if p2p_clnt.server_connect():
+                print('[+] Connected to', p2p_clnt_port)
 
-                    peers[p2p_clnt_port] = p2p_clnt
-                    p2p_clnt.send_msg(str(s_port).encode())
-                else:
-                    print(p2p_clnt_port, 'is sleeping')
-
-            peer_no = len(peers)
-
-            if file_detl['NoBlocks'] % peer_no == 0:
-                each_parts = file_detl['NoBlocks'] // peer_no
+                peers[p2p_clnt_port] = p2p_clnt
+                p2p_clnt.send_msg(str(s_port).encode())
             else:
-                each_parts = (file_detl['NoBlocks'] // peer_no) + 1
+                print(p2p_clnt_port, 'is sleeping')
 
-            time.sleep(0.5)
-            fname = file_detl['FileName']
-            f, l = 1, each_parts
-            last = left = file_detl['NoBlocks']
-            for k, v in peers.items():
-                left -= each_parts
+        peer_no = len(peers)
 
-                v.send_msg(f'sendfile {fname} {f} {l}'.encode())
+        if peer_no == 0:
+            print('No peer available')
+            continue
 
-                fileop = FileOp(fname, v)
-                # fileop.file_receive(f, l, file_detl['SHAofEveryBlock'][f-1:l])
+        if file_detl['NoBlocks'] % peer_no == 0:
+            each_parts = file_detl['NoBlocks'] // peer_no
+        else:
+            each_parts = (file_detl['NoBlocks'] // peer_no) + 1
 
-                t = threading.Thread(target=fileop.file_receive, args=[f, file_detl['SHAofEveryBlock'][f-1:l]])
-                t.start()
+        time.sleep(0.5)
+        fname = file_detl['FileName']
+        f, l = 1, each_parts
+        last = left = file_detl['NoBlocks']
+        thrds = []
 
-                f += each_parts
-                if left >= each_parts:
-                    l += each_parts
-                else:
-                    l = last
+        for k, clnt in peers.items():
+            left -= each_parts
 
-            trck_clnt.send_msg(b'more')
-            trck_clnt.send_msg(fname.encode())
+            clnt.send_msg(f'sendfile {fname} {f} {l}'.encode())
+
+            t = threading.Thread(target=clnt.receive_file,
+                                 args=[fname, clnt, f,
+                                       file_detl['SHAofEveryBlock'][f-1:l]])
+            thrds.append(t)
+            t.start()
+
+            f += each_parts
+            if left >= each_parts:
+                l += each_parts
+            else:
+                l = last
+
+        for i in thrds:
+            i.join()
+
+        print(fname, 'fully received')
+        trck_clnt.send_msg(b'more')
+        trck_clnt.send_msg(fname.encode())
 
     elif msg == 'h':
         options()
-
-    elif msg == 'e':
-        p2p_clnt_port = int(input('Enter peer port:\n'))
-        if p2p_clnt_port in peers:
-            p2p_clnt = peers[p2p_clnt_port]
-
-            p2p_clnt.send_msg(b'bye')
-            p2p_clnt.clnt.close()
-
-            del peers[p2p_clnt_port]
-
-        else:
-            print('Peer not exist')
 
     elif msg == 'q':
         if not is_trck:
