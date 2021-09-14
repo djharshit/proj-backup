@@ -1,8 +1,11 @@
 __pycache__/
-p/
-waste/
-1.sh
+1/
+2/
+3/
+4/
+restart.sh
 details.json
 files.json
 tracker.log
-
+1.py
+np.py
